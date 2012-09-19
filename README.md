@@ -1,9 +1,9 @@
 # Feed-Read
 
-[![Build Status](https://secure.travis-ci.org/sentientwaffle/feed-read.png?branch=master)](http://travis-ci.org/sentientwaffle/feed-read)
-
 [Node.js](http://nodejs.org/) module for parsing RSS and ATOM feeds into
 a common article object.
+
+This is a fork of snetientwaffle's feed-read and adds support for feeds with enclosures i.e. 'podcasts', etc.
 
 # Installation
 
@@ -25,6 +25,7 @@ Fetch a feed.
       //   * "link"      - The original article link (String).
       //   * "content"   - The HTML content of the article (String).
       //   * "published" - The date that the article was published (Date).
+      //   * "enclosure" - The first url associated with the first enclosure tag (String).
       //   * "feed"      - {name, source, link}
       // 
     });
@@ -44,6 +45,8 @@ Identify what type of feed the XML represents.
 
 Returns `false` when it is neither RSS or ATOM.
 
+## `feed.hasenclosure(xml_string)` // => "hasenclosure", "noenclosure"
+Identify if the feed has an enclosure tag.
 
 # License
 See LICENSE.
