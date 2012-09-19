@@ -1,17 +1,13 @@
-# Feed-Read
+# Feed-Read-Enclosures
 
 [Node.js](http://nodejs.org/) module for parsing RSS and ATOM feeds into
 a common article object.
 
 This is a fork of snetientwaffle's feed-read and adds support for feeds with enclosures i.e. 'podcasts', etc.
 
-# Installation
-
-    $ npm install feed-read
-
 # Usage
 
-    var feed = require("feed-read");
+    var feed = require("feed-read-enclosures");
 
 ## `feed(url, callback)`
 Fetch a feed.
@@ -25,8 +21,10 @@ Fetch a feed.
       //   * "link"      - The original article link (String).
       //   * "content"   - The HTML content of the article (String).
       //   * "published" - The date that the article was published (Date).
-      //   * "enclosure" - The first url associated with the first enclosure tag (String).
       //   * "feed"      - {name, source, link}
+      //
+      // Articles with enclosures have the following additional property:
+      //   * "enclosure" - The first url associated with the first enclosure tag (String).
       // 
     });
 
