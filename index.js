@@ -51,6 +51,13 @@ FeedRead.identify = function(xml) {
   }
 }
 
+
+// Public: Check of the feed has an enclosure tag.
+//
+// xml - A String of XML.
+//
+// Returns "hasenclosure, or "noenclosure".
+
 FeedRead.hasenclosure = function(xml) {
   if (/<enclosure /i.test(xml)) {
 	  return "hasenclosure";
