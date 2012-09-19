@@ -42,32 +42,45 @@ var FeedRead = module.exports = function(feed_url, callback) {
 // 
 // Returns "atom", "rss", or false when it is neither.
 FeedRead.identify = function(xml) {
-  if (/<(rss|rdf)\b/i.test(xml)) {
+  if (/<rss /i.test(xml)) {
     return "rss";
-  } else if (/<feed\b/i.test(xml)) {
+  } else if (/<feed /i.test(xml)) {
     return "atom";
   } else {
     return false;
   }
 }
 
-
+FeedRead.hasenclosure = function(xml) {
+  if (/<enclosure /i.test(xml)) {
+	  return "hasenclosure";
+	} else {
+	  return "noenclosure";
+	}
+}
 
 // Internal: Get a single feed.
 // 
 // feed_url - String url.
 // callback - Receives `(err, articles)`.
 // 
+
 FeedRead.get = function(feed_url, callback) {
-  request(feed_url, {timeout: 5000}, function(err, res, body) {
+  request(feed_url, function(err, res, body) {
     if (err) return callback(err);
     var type = FeedRead.identify(body);
-    if (type == "atom") {
+		var enclosure = FeedRead.hasenclosure(body);
+    if (type == "atom" && enclosure == "noenclosure") {
       FeedRead.atom(body, feed_url, callback);
-    } else if (type == "rss") {
+		} else if (type == "rss" && enclosure == "noenclosure") {
       FeedRead.rss(body, feed_url, callback);
+    } else if (type == "atom" && enclosure == "hasenclosure") {
+      FeedRead.atomenc(body, feed_url, callback);
+    } else if (type == "rss" && enclosure == "hasenclosure") {
+      FeedRead.rssenc(body, feed_url, callback);
     } else {
-      return callback(new Error("Body is not RSS or ATOM", "<"+ feed_url +">", res.statusCode));
+      return callback(new Error( "Body is not RSS or ATOM"
+                                , body.substr(0, 30), "..."));
     }
   });
 };
@@ -82,6 +95,7 @@ FeedRead.get = function(feed_url, callback) {
 // 
 // Returns an Array of Articles.
 FeedRead.atom = function(xml, source, callback) {
+	console.log('PARSED_ATOM_FEED: ' + source);
   if (!callback) return FeedRead.atom(xml, "", source);
   
   var parser   = new FeedParser()
@@ -108,19 +122,18 @@ FeedRead.atom = function(xml, source, callback) {
       meta.link || (meta.link = current_tag.attributes.href);
     } else if (tagname == "title" && !current_tag.parent.parent) {
       meta.name = current_tag.children[0];
-    }
+    } 
   };
   
   parser.onend = function() {
-    callback(null, _.filter(_.map(articles,
+    callback(null, _.map(articles,
       function(art) {
-        if (!art.children.length) return false;
         var author = child_by_name(art, "author");
         if (author) author = child_data(author, "name");
         
         var obj = {
             title:     child_data(art, "title")
-          , content:   scrub_html(child_data(art, "content"))
+          , content:   child_data(art, "content")
           , published: child_data(art, "published")
                     || child_data(art, "updated")
           , author:    author || default_author
@@ -130,11 +143,76 @@ FeedRead.atom = function(xml, source, callback) {
         if (obj.published) obj.published = new Date(obj.published);
         return obj;
       }
-    ), function(art) { return !!art; }));
+    ));
   };
   
   parser.write(xml);
 };
+
+
+// Public: Parse the articles from some ATOM with enclosures.
+// 
+// xml      - A XML String.
+// source   - (optional)
+// callback - Receives `(err, articles)`.
+// 
+// Returns an Array of Articles.
+FeedRead.atomenc = function(xml, source, callback) {
+  console.log('PARSED_ATOM_FEED_WITH_ENCLOSURE: ' + source);
+  if (!callback) return FeedRead.atom(xml, "", source);
+  
+  var parser   = new FeedParser()
+    , articles = []
+    // Info about the feed itself, not an article.
+    , meta     = {source: source}
+    // The current article.
+    , article
+    // The author for when no author is specified for the post.
+    , default_author;
+  
+  
+  parser.onopentag = function(tag) {
+    if (tag.name == "entry") article = tag;
+  };
+  
+  parser.onclosetag = function(tagname, current_tag) {
+    if (tagname == "entry") {
+      articles.push(article);
+      article = null;
+    } else if (tagname == "author" && !article) {
+      default_author = child_data(current_tag, "name");
+    } else if (tagname == "link" && current_tag.attributes.rel != "self") {
+      meta.link || (meta.link = current_tag.attributes.href);
+    } else if (tagname == "title" && !current_tag.parent.parent) {
+      meta.name = current_tag.children[0];
+    } 
+  };
+  
+  parser.onend = function() {
+    callback(null, _.map(articles,
+      function(art) {
+        var author = child_by_name(art, "author");
+        if (author) author = child_data(author, "name");
+        
+        var obj = {
+            title:     child_data(art, "title")
+          , content:   child_data(art, "content")
+          , published: child_data(art, "published")
+                    || child_data(art, "updated")
+          , author:    author || default_author
+          , link:      child_by_name(art, "link").attributes.href
+          , enclosure: child_by_name(art, "enclosure").attributes.url
+          , feed:      meta
+          };
+        if (obj.published) obj.published = new Date(obj.published);
+        return obj;
+      }
+    ));
+  };
+  
+  parser.write(xml);
+};
+
 
 
 // Public: Parse the articles from some RSS.
@@ -145,6 +223,7 @@ FeedRead.atom = function(xml, source, callback) {
 // 
 // Returns an Array of Articles.
 FeedRead.rss = function(xml, source, callback) {
+  console.log('PARSED_RSS_FEED: ' + source);
   if (!callback) return FeedRead.rss(xml, "", source);
   
   var parser   = new FeedParser()
@@ -166,13 +245,69 @@ FeedRead.rss = function(xml, source, callback) {
     } else if (tagname == "channel") {
       meta.link || (meta.link = child_data(current_tag, "link"));
       meta.name = child_data(current_tag, "title");
-    }
+    } 
   };
   
   parser.onend = function() {
-    callback(null, _.filter(_.map(articles,
+    callback(null, _.map(articles,
       function(art) {
-        if (!art.children.length) return false;
+        var obj = {
+            title:     child_data(art, "title")
+          , content:   scrub_html(child_data(art, "content:encoded"))
+                    || scrub_html(child_data(art, "description"))
+          , published: child_data(art, "pubDate")
+          , author:    child_data(art, "author")
+                    || child_data(art, "dc:creator")
+          , link:      child_data(art, "link")				
+          , feed:      meta
+          };
+        if (obj.published) obj.published = new Date(obj.published);
+        return obj;
+      }
+    ));
+  };
+  
+  parser.write(xml);
+};
+
+
+
+// Public: Parse the articles from some RSS with enclosures.
+// 
+// xml      - A XML String.
+// source   - (optional)
+// callback - Receives `(err, articles)`.
+// 
+// Returns an Array of Articles.
+FeedRead.rssenc = function(xml, source, callback) {
+  console.log('PARSED_RSS_FEED_WITH_ENCLOSURE: ' + source);
+  if (!callback) return FeedRead.rss(xml, "", source);
+  
+  var parser   = new FeedParser()
+    , articles = []
+    // Info about the feed itself, not an article.
+    , meta     = {source: source}
+    // The current article.
+    , article;
+  
+  
+  parser.onopentag = function(tag) {
+    if (tag.name == "item") article = tag;
+  };
+  
+  parser.onclosetag = function(tagname, current_tag) {
+    if (tagname == "item") {
+      articles.push(article);
+      article = null;
+    } else if (tagname == "channel") {
+      meta.link || (meta.link = child_data(current_tag, "link"));
+      meta.name = child_data(current_tag, "title");
+    } 
+  };
+  
+  parser.onend = function() {
+    callback(null, _.map(articles,
+      function(art) {
         var obj = {
             title:     child_data(art, "title")
           , content:   scrub_html(child_data(art, "content:encoded"))
@@ -181,16 +316,18 @@ FeedRead.rss = function(xml, source, callback) {
           , author:    child_data(art, "author")
                     || child_data(art, "dc:creator")
           , link:      child_data(art, "link")
+          , enclosure: child_by_name(art, "enclosure").attributes.url					
           , feed:      meta
           };
         if (obj.published) obj.published = new Date(obj.published);
         return obj;
       }
-    ), function(art) { return !!art; }));
+    ));
   };
   
   parser.write(xml);
 };
+
 
 
 // Methods to override:
@@ -216,10 +353,11 @@ var FeedParser = (function() {
     parser.onopentag  = function(tag) { _this.open(tag); };
     parser.onclosetag = function(tag) { _this.close(tag); };
     
-    parser.onerror = function() { this.error = undefined; }
     parser.ontext  = function(text) { _this.ontext(text); };
     parser.oncdata = function(text) { _this.ontext(text); };
     parser.onend   = function() { _this.onend(); };
+    
+    parser.onerror = console.error;
   }
   
   
