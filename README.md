@@ -3,7 +3,7 @@
 [Node.js](http://nodejs.org/) module for parsing RSS and ATOM feeds into
 a common article object.
 
-This is a fork of snetientwaffle's feed-read and adds support for feeds with enclosures i.e. 'podcasts', etc.
+This is a fork of sentientwaffle's feed-read and adds support for feeds with enclosures i.e. 'podcasts', etc.
 
 # Usage
 
